@@ -125,7 +125,7 @@ def add_product():
         print("🔵 Incoming product data:", data)
 
         name = data.get('name')
-        pricing_type = data.get('unit_type')  # frontend still sends 'unit_type'
+        pricing_type = data.get('unit_type')
         price_per_unit = data.get('rate')
 
         if not all([name, pricing_type, price_per_unit is not None]):
@@ -193,3 +193,23 @@ def update_product(id):
     except Exception as e:
         print("❌ Error while updating product:", str(e))
         return jsonify({'error': str(e)}), 400
+
+@main.route('/products/<int:id>', methods=['DELETE'])
+def delete_product(id):
+    product = Product.query.get(id)
+    if not product:
+        return jsonify({'error': 'Product not found'}), 404
+
+    try:
+        # Delete all related sales first if needed to avoid constraint errors
+        sales = Sale.query.filter_by(product_id=product.id).all()
+        for sale in sales:
+            db.session.delete(sale)
+
+        db.session.delete(product)
+        db.session.commit()
+        return jsonify({'message': 'Product deleted successfully'}), 200
+
+    except Exception as e:
+        print("❌ Error while deleting product:", str(e))
+        return jsonify({'error': str(e)}), 500
