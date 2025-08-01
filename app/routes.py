@@ -5,6 +5,8 @@ from datetime import datetime
 
 main = Blueprint('main', __name__)
 
+ALLOWED_UNIT_TYPES = ['kg', 'unit', 'piece', 'bale']
+
 # ---------------------- SALES ROUTES ----------------------
 
 @main.route('/sales', methods=['POST'])
@@ -126,7 +128,7 @@ def add_product():
         print("🔵 Incoming product data:", data)
 
         name = data.get('name')
-        unit_type = data.get('unit_type')  # Must be 'kg' or 'unit'
+        unit_type = data.get('unit_type')
         rate = data.get('rate')
 
         if not all([name, unit_type, rate is not None]):
@@ -137,8 +139,8 @@ def add_product():
         except (ValueError, TypeError):
             return jsonify({'error': 'Rate must be a valid number'}), 400
 
-        if unit_type not in ['kg', 'unit']:
-            return jsonify({'error': f'Invalid unit_type: {unit_type}. Must be \"kg\" or \"unit\"'}), 400
+        if unit_type not in ALLOWED_UNIT_TYPES:
+            return jsonify({'error': f'Invalid unit_type: {unit_type}. Must be one of {ALLOWED_UNIT_TYPES}'}), 400
 
         existing = Product.query.filter_by(name=name).first()
         if existing:
