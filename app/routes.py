@@ -165,3 +165,31 @@ def get_products():
     except Exception as e:
         print("❌ Error while fetching products:", str(e))
         return jsonify({'error': str(e)}), 500
+
+@main.route('/products/<int:id>', methods=['PUT'])
+def update_product(id):
+    product = Product.query.get(id)
+    if not product:
+        return jsonify({'error': 'Product not found'}), 404
+
+    data = request.get_json()
+    try:
+        print("🟡 Updating product with data:", data)
+
+        name = data.get('name', product.name)
+        unit_type = data.get('unit_type', product.pricing_type)
+        rate = data.get('rate', product.price_per_unit)
+
+        if unit_type not in ALLOWED_UNIT_TYPES:
+            return jsonify({'error': f'Invalid unit_type: {unit_type}'}), 400
+
+        product.name = name
+        product.pricing_type = unit_type
+        product.price_per_unit = float(rate)
+
+        db.session.commit()
+        return jsonify(product.to_dict()), 200
+
+    except Exception as e:
+        print("❌ Error while updating product:", str(e))
+        return jsonify({'error': str(e)}), 400
