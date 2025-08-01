@@ -5,18 +5,21 @@ from datetime import datetime
 
 main = Blueprint('main', __name__)
 
-# Add Sale
+# ---------------------- SALES ROUTES ----------------------
+
 @main.route('/sales', methods=['POST'])
 def add_sale():
     data = request.json
     try:
+        print("🔵 Incoming sale data:", data)
+
         product_name = data['product_type']
         weight = float(data['weight_per_unit'])
         units = int(data['num_units'])
 
         product = Product.query.filter_by(name=product_name).first()
         if not product:
-            return jsonify({'error': f'Product "{product_name}" not found. Please register it first.'}), 400
+            return jsonify({'error': f'Product \"{product_name}\" not found. Please register it first.'}), 400
 
         rate = product.rate
         total_price = weight * units * rate if product.unit_type == 'kg' else units * rate
@@ -35,12 +38,12 @@ def add_sale():
         return jsonify(sale.to_dict()), 201
 
     except Exception as e:
+        print("❌ Error while adding sale:", str(e))
         return jsonify({'error': str(e)}), 400
 
-# Get Sales (with optional date filtering)
 @main.route('/sales', methods=['GET'])
 def get_sales():
-    date_str = request.args.get('date')  # Optional filter by date
+    date_str = request.args.get('date')
     try:
         if date_str:
             date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
@@ -54,7 +57,6 @@ def get_sales():
     except ValueError:
         return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
 
-#Get Sale by ID
 @main.route('/sales/<int:id>', methods=['GET'])
 def get_sale(id):
     sale = Sale.query.get(id)
@@ -63,7 +65,6 @@ def get_sale(id):
     else:
         return jsonify({'error': 'Sale not found'}), 404
 
-# Update Sale
 @main.route('/sales/<int:id>', methods=['PUT'])
 def update_sale(id):
     sale = Sale.query.get(id)
@@ -72,6 +73,8 @@ def update_sale(id):
 
     data = request.json
     try:
+        print("🟡 Updating sale with data:", data)
+
         sale.product_type = data.get('product_type', sale.product_type)
         sale.weight_per_unit = float(data.get('weight_per_unit', sale.weight_per_unit))
         sale.num_units = int(data.get('num_units', sale.num_units))
@@ -83,9 +86,9 @@ def update_sale(id):
         return jsonify(sale.to_dict()), 200
 
     except Exception as e:
+        print("❌ Error while updating sale:", str(e))
         return jsonify({'error': str(e)}), 400
 
-#Delete Sale
 @main.route('/sales/<int:id>', methods=['DELETE'])
 def delete_sale(id):
     sale = Sale.query.get(id)
@@ -96,7 +99,8 @@ def delete_sale(id):
     db.session.commit()
     return jsonify({'message': 'Sale deleted successfully'}), 200
 
-# View Stock Estimate
+# ---------------------- STOCK ROUTE ----------------------
+
 @main.route('/stock', methods=['GET'])
 def get_stock():
     try:
@@ -105,21 +109,31 @@ def get_stock():
 
         for sale in sales:
             prod = sale.product_type
-            stock_data.setdefault(prod, 100)  # default starting point
+            stock_data.setdefault(prod, 100)
             stock_data[prod] -= sale.num_units
 
         return jsonify(stock_data), 200
     except Exception as e:
+        print("❌ Error while fetching stock:", str(e))
         return jsonify({'error': str(e)}), 500
 
-# Add Product
+# ---------------------- PRODUCT ROUTES ----------------------
+
 @main.route('/products', methods=['POST'])
 def add_product():
     data = request.json
     try:
-        name = data['name']
-        unit_type = data['unit_type']  # 'kg' or 'unit'
-        rate = float(data['rate'])
+        print("🔵 Incoming product data:", data)
+
+        name = data.get('name')
+        unit_type = data.get('unit_type')  # Must be 'kg' or 'unit'
+        rate = float(data.get('rate'))
+
+        if not name or not unit_type:
+            return jsonify({'error': 'Missing required fields: name or unit_type'}), 400
+
+        if unit_type not in ['kg', 'unit']:
+            return jsonify({'error': f'Invalid unit_type: {unit_type}. Must be \"kg\" or \"unit\"'}), 400
 
         existing = Product.query.filter_by(name=name).first()
         if existing:
@@ -132,13 +146,14 @@ def add_product():
         return jsonify(new_product.to_dict()), 201
 
     except Exception as e:
+        print("❌ Error while adding product:", str(e))
         return jsonify({'error': str(e)}), 400
 
-# Get all registered products
 @main.route('/products', methods=['GET'])
 def get_products():
     try:
         products = Product.query.all()
         return jsonify([p.to_dict() for p in products]), 200
     except Exception as e:
+        print("❌ Error while fetching products:", str(e))
         return jsonify({'error': str(e)}), 500
