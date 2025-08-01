@@ -121,16 +121,21 @@ def get_stock():
 
 @main.route('/products', methods=['POST'])
 def add_product():
-    data = request.json
     try:
+        data = request.get_json()
         print("🔵 Incoming product data:", data)
 
         name = data.get('name')
         unit_type = data.get('unit_type')  # Must be 'kg' or 'unit'
-        rate = float(data.get('rate'))
+        rate = data.get('rate')
 
-        if not name or not unit_type:
-            return jsonify({'error': 'Missing required fields: name or unit_type'}), 400
+        if not all([name, unit_type, rate is not None]):
+            return jsonify({'error': 'Missing required fields: name, unit_type or rate'}), 400
+
+        try:
+            rate = float(rate)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Rate must be a valid number'}), 400
 
         if unit_type not in ['kg', 'unit']:
             return jsonify({'error': f'Invalid unit_type: {unit_type}. Must be \"kg\" or \"unit\"'}), 400
