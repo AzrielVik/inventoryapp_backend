@@ -23,14 +23,13 @@ def add_sale():
         if not product:
             return jsonify({'error': f'Product \"{product_name}\" not found. Please register it first.'}), 400
 
-        rate = product.rate
-        total_price = weight * units * rate if product.unit_type == 'kg' else units * rate
+        rate = product.price_per_unit
+        total_price = weight * units * rate if product.pricing_type.value == 'kg' else units * rate
 
         sale = Sale(
-            product_type=product_name,
+            product_id=product.id,
             weight_per_unit=weight,
             num_units=units,
-            rate_per_kg=rate,
             customer_name=data.get('customer_name'),
             total_price=total_price
         )
@@ -77,12 +76,10 @@ def update_sale(id):
     try:
         print("🟡 Updating sale with data:", data)
 
-        sale.product_type = data.get('product_type', sale.product_type)
         sale.weight_per_unit = float(data.get('weight_per_unit', sale.weight_per_unit))
         sale.num_units = int(data.get('num_units', sale.num_units))
-        sale.rate_per_kg = float(data.get('rate_per_kg', sale.rate_per_kg))
         sale.customer_name = data.get('customer_name', sale.customer_name)
-        sale.total_price = sale.weight_per_unit * sale.num_units * sale.rate_per_kg
+        sale.total_price = sale.weight_per_unit * sale.num_units * sale.product.price_per_unit
 
         db.session.commit()
         return jsonify(sale.to_dict()), 200
@@ -110,7 +107,7 @@ def get_stock():
         stock_data = {}
 
         for sale in sales:
-            prod = sale.product_type
+            prod = sale.product.name
             stock_data.setdefault(prod, 100)
             stock_data[prod] -= sale.num_units
 
@@ -128,25 +125,29 @@ def add_product():
         print("🔵 Incoming product data:", data)
 
         name = data.get('name')
-        unit_type = data.get('unit_type')
-        rate = data.get('rate')
+        pricing_type = data.get('unit_type')  # frontend still sends 'unit_type'
+        price_per_unit = data.get('rate')
 
-        if not all([name, unit_type, rate is not None]):
+        if not all([name, pricing_type, price_per_unit is not None]):
             return jsonify({'error': 'Missing required fields: name, unit_type or rate'}), 400
 
+        if pricing_type not in ALLOWED_UNIT_TYPES:
+            return jsonify({'error': f'Invalid unit_type: {pricing_type}. Must be one of {ALLOWED_UNIT_TYPES}'}), 400
+
         try:
-            rate = float(rate)
+            price_per_unit = float(price_per_unit)
         except (ValueError, TypeError):
             return jsonify({'error': 'Rate must be a valid number'}), 400
-
-        if unit_type not in ALLOWED_UNIT_TYPES:
-            return jsonify({'error': f'Invalid unit_type: {unit_type}. Must be one of {ALLOWED_UNIT_TYPES}'}), 400
 
         existing = Product.query.filter_by(name=name).first()
         if existing:
             return jsonify({'error': 'Product already exists'}), 409
 
-        new_product = Product(name=name, unit_type=unit_type, rate=rate)
+        new_product = Product(
+            name=name,
+            pricing_type=pricing_type,
+            price_per_unit=price_per_unit
+        )
         db.session.add(new_product)
         db.session.commit()
 
