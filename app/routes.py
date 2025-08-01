@@ -1,21 +1,28 @@
 from flask import Blueprint, request, jsonify
-from .models import Sale
+from .models import Sale, Product
 from . import db
 from datetime import datetime
 
 main = Blueprint('main', __name__)
 
+# Add Sale
 @main.route('/sales', methods=['POST'])
 def add_sale():
     data = request.json
     try:
+        product_name = data['product_type']
         weight = float(data['weight_per_unit'])
         units = int(data['num_units'])
-        rate = float(data['rate_per_kg'])
-        total_price = weight * units * rate
+
+        product = Product.query.filter_by(name=product_name).first()
+        if not product:
+            return jsonify({'error': f'Product "{product_name}" not found. Please register it first.'}), 400
+
+        rate = product.rate
+        total_price = weight * units * rate if product.unit_type == 'kg' else units * rate
 
         sale = Sale(
-            product_type=data['product_type'],
+            product_type=product_name,
             weight_per_unit=weight,
             num_units=units,
             rate_per_kg=rate,
@@ -30,6 +37,7 @@ def add_sale():
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
+# Get Sales (with optional date filtering)
 @main.route('/sales', methods=['GET'])
 def get_sales():
     date_str = request.args.get('date')  # Optional filter by date
@@ -46,6 +54,7 @@ def get_sales():
     except ValueError:
         return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
 
+#Get Sale by ID
 @main.route('/sales/<int:id>', methods=['GET'])
 def get_sale(id):
     sale = Sale.query.get(id)
@@ -54,6 +63,7 @@ def get_sale(id):
     else:
         return jsonify({'error': 'Sale not found'}), 404
 
+# Update Sale
 @main.route('/sales/<int:id>', methods=['PUT'])
 def update_sale(id):
     sale = Sale.query.get(id)
@@ -75,6 +85,7 @@ def update_sale(id):
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
+#Delete Sale
 @main.route('/sales/<int:id>', methods=['DELETE'])
 def delete_sale(id):
     sale = Sale.query.get(id)
@@ -85,11 +96,10 @@ def delete_sale(id):
     db.session.commit()
     return jsonify({'message': 'Sale deleted successfully'}), 200
 
-# ✅ STOCK ENDPOINT (basic placeholder logic)
+# View Stock Estimate
 @main.route('/stock', methods=['GET'])
 def get_stock():
     try:
-        # Placeholder: Assume 100 units per product before any sale
         sales = Sale.query.all()
         stock_data = {}
 
@@ -99,5 +109,36 @@ def get_stock():
             stock_data[prod] -= sale.num_units
 
         return jsonify(stock_data), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Add Product
+@main.route('/products', methods=['POST'])
+def add_product():
+    data = request.json
+    try:
+        name = data['name']
+        unit_type = data['unit_type']  # 'kg' or 'unit'
+        rate = float(data['rate'])
+
+        existing = Product.query.filter_by(name=name).first()
+        if existing:
+            return jsonify({'error': 'Product already exists'}), 409
+
+        new_product = Product(name=name, unit_type=unit_type, rate=rate)
+        db.session.add(new_product)
+        db.session.commit()
+
+        return jsonify(new_product.to_dict()), 201
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+# Get all registered products
+@main.route('/products', methods=['GET'])
+def get_products():
+    try:
+        products = Product.query.all()
+        return jsonify([p.to_dict() for p in products]), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
