@@ -21,10 +21,10 @@ def add_sale():
 
         product = Product.query.filter_by(name=product_name).first()
         if not product:
-            return jsonify({'error': f'Product \"{product_name}\" not found. Please register it first.'}), 400
+            return jsonify({'error': f'Product "{product_name}" not found. Please register it first.'}), 400
 
         rate = product.price_per_unit
-        total_price = weight * units * rate if product.pricing_type.value == 'kg' else units * rate
+        total_price = weight * units * rate if product.pricing_type == 'kg' else units * rate
 
         sale = Sale(
             product_id=product.id,
@@ -79,7 +79,12 @@ def update_sale(id):
         sale.weight_per_unit = float(data.get('weight_per_unit', sale.weight_per_unit))
         sale.num_units = int(data.get('num_units', sale.num_units))
         sale.customer_name = data.get('customer_name', sale.customer_name)
-        sale.total_price = sale.weight_per_unit * sale.num_units * sale.product.price_per_unit
+
+        # Recalculate total price
+        if sale.product.pricing_type == 'kg':
+            sale.total_price = sale.weight_per_unit * sale.num_units * sale.product.price_per_unit
+        else:
+            sale.total_price = sale.num_units * sale.product.price_per_unit
 
         db.session.commit()
         return jsonify(sale.to_dict()), 200
@@ -108,7 +113,7 @@ def get_stock():
 
         for sale in sales:
             prod = sale.product.name
-            stock_data.setdefault(prod, 100)
+            stock_data.setdefault(prod, 100)  # Default stock assumption
             stock_data[prod] -= sale.num_units
 
         return jsonify(stock_data), 200
@@ -201,7 +206,6 @@ def delete_product(id):
         return jsonify({'error': 'Product not found'}), 404
 
     try:
-        # Delete all related sales first if needed to avoid constraint errors
         sales = Sale.query.filter_by(product_id=product.id).all()
         for sale in sales:
             db.session.delete(sale)
@@ -213,3 +217,23 @@ def delete_product(id):
     except Exception as e:
         print("❌ Error while deleting product:", str(e))
         return jsonify({'error': str(e)}), 500
+
+# ---------------------- SALE MODEL PATCH ----------------------
+
+# This should be placed inside your Sale model (models.py), but shown here for clarity
+def sale_to_dict(self):
+    return {
+        'id': self.id,
+        'product_id': self.product_id,
+        'product_name': self.product.name if self.product else None,
+        'unit_type': self.product.pricing_type if self.product else None,
+        'price_per_unit': self.product.price_per_unit if self.product else None,
+        'weight_per_unit': self.weight_per_unit,
+        'num_units': self.num_units,
+        'total_price': self.total_price,
+        'customer_name': self.customer_name,
+        'date_sold': self.date_sold.isoformat() if self.date_sold else None
+    }
+
+# Then assign it like this:
+Sale.to_dict = sale_to_dict
