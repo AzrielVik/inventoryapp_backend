@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from .models import Sale, Product
+from .models import Sale, Product, PricingType
 from . import db
 from datetime import datetime
 
@@ -24,7 +24,7 @@ def add_sale():
             return jsonify({'error': f'Product ID {product_id} not found. Please register it first.'}), 400
 
         rate = product.price_per_unit
-        total_price = weight * units * rate if product.pricing_type == 'kg' else units * rate
+        total_price = weight * units * rate if product.pricing_type == PricingType.kg else units * rate
 
         sale = Sale(
             product_id=product.id,
@@ -82,7 +82,7 @@ def update_sale(id):
         sale.customer_name = data.get('customer_name', sale.customer_name)
 
         # Recalculate total price
-        if sale.product.pricing_type == 'kg':
+        if sale.product.pricing_type == PricingType.kg:
             sale.total_price = sale.weight_per_unit * sale.num_units * sale.product.price_per_unit
         else:
             sale.total_price = sale.num_units * sale.product.price_per_unit
@@ -151,7 +151,7 @@ def add_product():
 
         new_product = Product(
             name=name,
-            pricing_type=pricing_type,
+            pricing_type=PricingType(pricing_type),  # ✅ converted string to enum
             price_per_unit=price_per_unit
         )
         db.session.add(new_product)
@@ -183,14 +183,14 @@ def update_product(id):
         print("🟡 Updating product with data:", data)
 
         name = data.get('name', product.name)
-        unit_type = data.get('unit_type', product.pricing_type)
+        unit_type = data.get('unit_type', product.pricing_type.value)
         rate = data.get('rate', product.price_per_unit)
 
         if unit_type not in ALLOWED_UNIT_TYPES:
             return jsonify({'error': f'Invalid unit_type: {unit_type}'}), 400
 
         product.name = name
-        product.pricing_type = unit_type
+        product.pricing_type = PricingType(unit_type)  # ✅ enum conversion
         product.price_per_unit = float(rate)
 
         db.session.commit()
@@ -226,7 +226,7 @@ def sale_to_dict(self):
         'id': self.id,
         'product_id': self.product_id,
         'product_name': self.product.name if self.product else None,
-        'unit_type': self.product.pricing_type if self.product else None,
+        'unit_type': self.product.pricing_type.value if self.product else None,
         'price_per_unit': self.product.price_per_unit if self.product else None,
         'weight_per_unit': self.weight_per_unit,
         'num_units': self.num_units,

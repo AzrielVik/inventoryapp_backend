@@ -36,7 +36,7 @@ class Sale(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
-    weight_per_unit = db.Column(db.Integer, nullable=True)  # nullable=True to support per unit pricing
+    weight_per_unit = db.Column(db.Integer, nullable=True)  # nullable to support per unit pricing
     num_units = db.Column(db.Integer, nullable=False)
     customer_name = db.Column(db.String(100), nullable=False)
     total_price = db.Column(db.Float, nullable=False)
@@ -59,3 +59,20 @@ class Sale(db.Model):
             "total_price": self.total_price,
             "date_sold": self.date_sold.strftime("%Y-%m-%d %H:%M:%S")
         }
+
+# Optional override of Sale.to_dict (cleaner version used in route)
+def sale_to_dict(self):
+    return {
+        'id': self.id,
+        'product_id': self.product_id,
+        'product_name': self.product.name if self.product else None,
+        'unit_type': self.product.pricing_type.value if self.product else None,  # ✅ fixed
+        'price_per_unit': self.product.price_per_unit if self.product else None,
+        'weight_per_unit': self.weight_per_unit,
+        'num_units': self.num_units,
+        'total_price': self.total_price,
+        'customer_name': self.customer_name,
+        'date_sold': self.date_sold.isoformat() if self.date_sold else None
+    }
+
+Sale.to_dict = sale_to_dict  # apply the override
