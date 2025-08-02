@@ -47,7 +47,12 @@ class Sale(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
-            "product": self.product.to_dict(),
+            "product": {
+                "id": self.product.id,
+                "name": self.product.name,
+                "pricing_type": self.product.pricing_type.value,
+                "price_per_unit": self.product.price_per_unit
+            } if self.product else None,
             "weight_per_unit": self.weight_per_unit,
             "num_units": self.num_units,
             "customer_name": self.customer_name,
