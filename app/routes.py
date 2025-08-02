@@ -15,13 +15,13 @@ def add_sale():
     try:
         print("🔵 Incoming sale data:", data)
 
-        product_name = data['product_type']
-        weight = float(data['weight_per_unit'])
+        product_id = data['product_id']
+        weight = float(data.get('weight_per_unit', 1))
         units = int(data['num_units'])
 
-        product = Product.query.filter_by(name=product_name).first()
+        product = Product.query.get(product_id)
         if not product:
-            return jsonify({'error': f'Product "{product_name}" not found. Please register it first.'}), 400
+            return jsonify({'error': f'Product ID {product_id} not found. Please register it first.'}), 400
 
         rate = product.price_per_unit
         total_price = weight * units * rate if product.pricing_type == 'kg' else units * rate
@@ -31,7 +31,8 @@ def add_sale():
             weight_per_unit=weight,
             num_units=units,
             customer_name=data.get('customer_name'),
-            total_price=total_price
+            total_price=total_price,
+            date_sold=datetime.utcnow()
         )
         db.session.add(sale)
         db.session.commit()
@@ -220,7 +221,6 @@ def delete_product(id):
 
 # ---------------------- SALE MODEL PATCH ----------------------
 
-# This should be placed inside your Sale model (models.py), but shown here for clarity
 def sale_to_dict(self):
     return {
         'id': self.id,
@@ -235,5 +235,4 @@ def sale_to_dict(self):
         'date_sold': self.date_sold.isoformat() if self.date_sold else None
     }
 
-# Then assign it like this:
 Sale.to_dict = sale_to_dict
