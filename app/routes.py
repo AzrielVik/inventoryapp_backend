@@ -1,238 +1,217 @@
 from flask import Blueprint, request, jsonify
-from .models import Sale, Product, PricingType
-from . import db
-from datetime import datetime
+from appwrite.client import Client
+from appwrite.services.databases import Databases
+from appwrite.services.account import Account
+from appwrite.id import ID
+import os
+import traceback
 
-main = Blueprint('main', __name__)
+# ✅ Use "main" so __init__.py can import it
+main = Blueprint("main", __name__)
 
-ALLOWED_UNIT_TYPES = ['kg', 'unit', 'piece', 'bale']
+# ----------------------
+# 🔧 Appwrite Client Setup
+# ----------------------
+client = Client()
+client.set_endpoint(os.getenv("APPWRITE_ENDPOINT"))
+client.set_project(os.getenv("APPWRITE_PROJECT_ID"))
+client.set_key(os.getenv("APPWRITE_API_KEY"))
 
-# ---------------------- SALES ROUTES ----------------------
+db = Databases(client)
+account = Account(client)
 
-@main.route('/sales', methods=['POST'])
-def add_sale():
-    data = request.json
+DATABASE_ID = os.getenv("APPWRITE_DATABASE_ID")
+PRODUCTS_COLLECTION_ID = os.getenv("PRODUCTS_COLLECTION_ID")
+SALES_COLLECTION_ID = os.getenv("SALES_COLLECTION_ID")
+
+# ----------------------
+# 🔐 AUTH ROUTES
+# ----------------------
+@main.route("/signup", methods=["POST"])
+def signup():
     try:
-        print("🔵 Incoming sale data:", data)
+        data = request.json
+        print("📩 Signup request data:", data)
 
-        product_id = data['product_id']
-        weight = float(data.get('weight_per_unit', 1))
-        units = int(data['num_units'])
-
-        product = Product.query.get(product_id)
-        if not product:
-            return jsonify({'error': f'Product ID {product_id} not found. Please register it first.'}), 400
-
-        rate = product.price_per_unit
-        total_price = weight * units * rate if product.pricing_type == PricingType.kg else units * rate
-
-        sale = Sale(
-            product_id=product.id,
-            weight_per_unit=weight,
-            num_units=units,
-            customer_name=data.get('customer_name'),
-            total_price=total_price,
-            date_sold=datetime.utcnow()
+        user = account.create(
+            user_id=ID.unique(),
+            email=data["email"],
+            password=data["password"],
+            name=data.get("name", "")
         )
-        db.session.add(sale)
-        db.session.commit()
-
-        return jsonify(sale.to_dict()), 201
-
+        print("✅ Signup success:", user)
+        return jsonify(user), 201
     except Exception as e:
-        print("❌ Error while adding sale:", str(e))
-        return jsonify({'error': str(e)}), 400
+        print("❌ Error during signup:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
 
-@main.route('/sales', methods=['GET'])
-def get_sales():
-    date_str = request.args.get('date')
+
+@main.route("/login", methods=["POST"])
+def login():
     try:
-        if date_str:
-            date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
-            sales = Sale.query.all()
-            sales = [s for s in sales if s.date_sold.date() == date_obj]
-        else:
-            sales = Sale.query.all()
+        data = request.json
+        print("📩 Login request data:", data)
 
-        return jsonify([s.to_dict() for s in sales]), 200
-
-    except ValueError:
-        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
-
-@main.route('/sales/<int:id>', methods=['GET'])
-def get_sale(id):
-    sale = Sale.query.get(id)
-    if sale:
-        return jsonify(sale.to_dict()), 200
-    else:
-        return jsonify({'error': 'Sale not found'}), 404
-
-@main.route('/sales/<int:id>', methods=['PUT'])
-def update_sale(id):
-    sale = Sale.query.get(id)
-    if not sale:
-        return jsonify({'error': 'Sale not found'}), 404
-
-    data = request.json
-    try:
-        print("🟡 Updating sale with data:", data)
-
-        sale.weight_per_unit = float(data.get('weight_per_unit', sale.weight_per_unit))
-        sale.num_units = int(data.get('num_units', sale.num_units))
-        sale.customer_name = data.get('customer_name', sale.customer_name)
-
-        # Recalculate total price
-        if sale.product.pricing_type == PricingType.kg:
-            sale.total_price = sale.weight_per_unit * sale.num_units * sale.product.price_per_unit
-        else:
-            sale.total_price = sale.num_units * sale.product.price_per_unit
-
-        db.session.commit()
-        return jsonify(sale.to_dict()), 200
-
+        session = account.create_email_password_session(
+            email=data["email"],
+            password=data["password"]
+        )
+        print("✅ Login success:", session)
+        return jsonify(session), 200
     except Exception as e:
-        print("❌ Error while updating sale:", str(e))
-        return jsonify({'error': str(e)}), 400
+        print("❌ Error during login:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
 
-@main.route('/sales/<int:id>', methods=['DELETE'])
-def delete_sale(id):
-    sale = Sale.query.get(id)
-    if not sale:
-        return jsonify({'error': 'Sale not found'}), 404
 
-    db.session.delete(sale)
-    db.session.commit()
-    return jsonify({'message': 'Sale deleted successfully'}), 200
-
-# ---------------------- STOCK ROUTE ----------------------
-
-@main.route('/stock', methods=['GET'])
-def get_stock():
-    try:
-        sales = Sale.query.all()
-        stock_data = {}
-
-        for sale in sales:
-            prod = sale.product.name
-            stock_data.setdefault(prod, 100)  # Default stock assumption
-            stock_data[prod] -= sale.num_units
-
-        return jsonify(stock_data), 200
-    except Exception as e:
-        print("❌ Error while fetching stock:", str(e))
-        return jsonify({'error': str(e)}), 500
-
-# ---------------------- PRODUCT ROUTES ----------------------
-
-@main.route('/products', methods=['POST'])
+# ----------------------
+# 📦 PRODUCT ROUTES
+# ----------------------
+@main.route("/products", methods=["POST"])
 def add_product():
     try:
-        data = request.get_json()
-        print("🔵 Incoming product data:", data)
+        data = request.json
+        print("📦 Add product request:", data)
 
-        name = data.get('name')
-        pricing_type = data.get('unit_type')
-        price_per_unit = data.get('rate')
-
-        if not all([name, pricing_type, price_per_unit is not None]):
-            return jsonify({'error': 'Missing required fields: name, unit_type or rate'}), 400
-
-        if pricing_type not in ALLOWED_UNIT_TYPES:
-            return jsonify({'error': f'Invalid unit_type: {pricing_type}. Must be one of {ALLOWED_UNIT_TYPES}'}), 400
-
-        try:
-            price_per_unit = float(price_per_unit)
-        except (ValueError, TypeError):
-            return jsonify({'error': 'Rate must be a valid number'}), 400
-
-        existing = Product.query.filter_by(name=name).first()
-        if existing:
-            return jsonify({'error': 'Product already exists'}), 409
-
-        new_product = Product(
-            name=name,
-            pricing_type=PricingType(pricing_type),  # ✅ converted string to enum
-            price_per_unit=price_per_unit
+        product = db.create_document(
+            database_id=DATABASE_ID,
+            collection_id=PRODUCTS_COLLECTION_ID,
+            document_id=ID.unique(),
+            data=data
         )
-        db.session.add(new_product)
-        db.session.commit()
-
-        return jsonify(new_product.to_dict()), 201
-
+        print("✅ Product added:", product)
+        return jsonify(product), 201
     except Exception as e:
-        print("❌ Error while adding product:", str(e))
-        return jsonify({'error': str(e)}), 400
+        print("❌ Error adding product:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
 
-@main.route('/products', methods=['GET'])
+
+@main.route("/products", methods=["GET"])
 def get_products():
     try:
-        products = Product.query.all()
-        return jsonify([p.to_dict() for p in products]), 200
+        print("📦 Fetching all products...")
+        products = db.list_documents(
+            database_id=DATABASE_ID,
+            collection_id=PRODUCTS_COLLECTION_ID
+        )
+        print("✅ Products fetched:", products)
+        return jsonify(products), 200
     except Exception as e:
-        print("❌ Error while fetching products:", str(e))
-        return jsonify({'error': str(e)}), 500
+        print("❌ Error fetching products:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
 
-@main.route('/products/<int:id>', methods=['PUT'])
-def update_product(id):
-    product = Product.query.get(id)
-    if not product:
-        return jsonify({'error': 'Product not found'}), 404
 
-    data = request.get_json()
+@main.route("/products/<product_id>", methods=["PUT"])
+def update_product(product_id):
     try:
-        print("🟡 Updating product with data:", data)
+        data = request.json
+        print(f"📦 Update product {product_id} with:", data)
 
-        name = data.get('name', product.name)
-        unit_type = data.get('unit_type', product.pricing_type.value)
-        rate = data.get('rate', product.price_per_unit)
-
-        if unit_type not in ALLOWED_UNIT_TYPES:
-            return jsonify({'error': f'Invalid unit_type: {unit_type}'}), 400
-
-        product.name = name
-        product.pricing_type = PricingType(unit_type)  # ✅ enum conversion
-        product.price_per_unit = float(rate)
-
-        db.session.commit()
-        return jsonify(product.to_dict()), 200
-
+        updated = db.update_document(
+            database_id=DATABASE_ID,
+            collection_id=PRODUCTS_COLLECTION_ID,
+            document_id=product_id,
+            data=data
+        )
+        print("✅ Product updated:", updated)
+        return jsonify(updated), 200
     except Exception as e:
-        print("❌ Error while updating product:", str(e))
-        return jsonify({'error': str(e)}), 400
+        print("❌ Error updating product:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
 
-@main.route('/products/<int:id>', methods=['DELETE'])
-def delete_product(id):
-    product = Product.query.get(id)
-    if not product:
-        return jsonify({'error': 'Product not found'}), 404
 
+@main.route("/products/<product_id>", methods=["DELETE"])
+def delete_product(product_id):
     try:
-        sales = Sale.query.filter_by(product_id=product.id).all()
-        for sale in sales:
-            db.session.delete(sale)
-
-        db.session.delete(product)
-        db.session.commit()
-        return jsonify({'message': 'Product deleted successfully'}), 200
-
+        print(f"🗑️ Delete product {product_id}")
+        db.delete_document(
+            database_id=DATABASE_ID,
+            collection_id=PRODUCTS_COLLECTION_ID,
+            document_id=product_id
+        )
+        print("✅ Product deleted:", product_id)
+        return jsonify({"message": "Product deleted successfully"}), 200
     except Exception as e:
-        print("❌ Error while deleting product:", str(e))
-        return jsonify({'error': str(e)}), 500
+        print("❌ Error deleting product:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
 
-# ---------------------- SALE MODEL PATCH ----------------------
 
-def sale_to_dict(self):
-    return {
-        'id': self.id,
-        'product_id': self.product_id,
-        'product_name': self.product.name if self.product else None,
-        'unit_type': self.product.pricing_type.value if self.product else None,
-        'price_per_unit': self.product.price_per_unit if self.product else None,
-        'weight_per_unit': self.weight_per_unit,
-        'num_units': self.num_units,
-        'total_price': self.total_price,
-        'customer_name': self.customer_name,
-        'date_sold': self.date_sold.isoformat() if self.date_sold else None
-    }
+# ----------------------
+# 💰 SALES ROUTES
+# ----------------------
+@main.route("/sales", methods=["POST"])
+def add_sale():
+    try:
+        data = request.json
+        print("💰 Add sale request:", data)
 
-Sale.to_dict = sale_to_dict
+        sale = db.create_document(
+            database_id=DATABASE_ID,
+            collection_id=SALES_COLLECTION_ID,
+            document_id=ID.unique(),
+            data=data
+        )
+        print("✅ Sale added:", sale)
+        return jsonify(sale), 201
+    except Exception as e:
+        print("❌ Error adding sale:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
+
+
+@main.route("/sales", methods=["GET"])
+def get_sales():
+    try:
+        print("💰 Fetching all sales...")
+        sales = db.list_documents(
+            database_id=DATABASE_ID,
+            collection_id=SALES_COLLECTION_ID
+        )
+        print("✅ Sales fetched:", sales)
+        return jsonify(sales), 200
+    except Exception as e:
+        print("❌ Error fetching sales:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
+
+
+@main.route("/sales/<sale_id>", methods=["PUT"])
+def update_sale(sale_id):
+    try:
+        data = request.json
+        print(f"💰 Update sale {sale_id} with:", data)
+
+        updated = db.update_document(
+            database_id=DATABASE_ID,
+            collection_id=SALES_COLLECTION_ID,
+            document_id=sale_id,
+            data=data
+        )
+        print("✅ Sale updated:", updated)
+        return jsonify(updated), 200
+    except Exception as e:
+        print("❌ Error updating sale:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
+
+
+@main.route("/sales/<sale_id>", methods=["DELETE"])
+def delete_sale(sale_id):
+    try:
+        print(f"🗑️ Delete sale {sale_id}")
+        db.delete_document(
+            database_id=DATABASE_ID,
+            collection_id=SALES_COLLECTION_ID,
+            document_id=sale_id
+        )
+        print("✅ Sale deleted:", sale_id)
+        return jsonify({"message": "Sale deleted successfully"}), 200
+    except Exception as e:
+        print("❌ Error deleting sale:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 400
