@@ -8,11 +8,12 @@ import os
 import traceback
 from datetime import datetime
 
+# Import Rafiki (Gemini AI helper)
+from .rafiki import ask_gemini
+
 main = Blueprint("main", __name__)
 
-
 #  Appwrite Client Setup
-
 client = Client()
 client.set_endpoint(os.getenv("APPWRITE_ENDPOINT"))
 client.set_project(os.getenv("APPWRITE_PROJECT_ID"))
@@ -26,7 +27,7 @@ PRODUCTS_COLLECTION_ID = os.getenv("PRODUCTS_COLLECTION_ID")
 SALES_COLLECTION_ID = os.getenv("SALES_COLLECTION_ID")
 
 
-#  AUTH ROUTES
+# ======================== AUTH ROUTES ========================
 
 @main.route("/signup", methods=["POST"])
 def signup():
@@ -67,7 +68,8 @@ def login():
 
 
 
-# PRODUCT ROUTES
+# ======================== PRODUCT ROUTES ========================
+
 @main.route("/products", methods=["POST"])
 def add_product():
     try:
@@ -114,7 +116,6 @@ def get_products():
             queries=[Query.equal("user_id", user_id)]
         )
 
-        # Safely access documents
         products_list = response.get("documents", [])
         print(f"✅ {len(products_list)} products fetched for user {user_id}")
 
@@ -164,7 +165,8 @@ def delete_product(product_id):
 
 
 
-#  SALES ROUTES
+# ======================== SALES ROUTES ========================
+
 @main.route("/sales", methods=["POST"])
 def add_sale():
     try:
@@ -181,19 +183,19 @@ def add_sale():
             collection_id=SALES_COLLECTION_ID,
             document_id=ID.unique(),
             data={
-        "user_id": user_id,
-        "product_id": data.get("product_id"),
-        "product_name": data.get("product_name"),
-         "unit_type": data.get("unit_type"),
-        "customer_name": data.get("customer_name"),
-        "price_per_unit": data.get("price_per_unit"),
-        "total_price": data.get("total_price"),
-        "mpesaNumber": data.get("mpesaNumber"),
-        "weight_per_unit": data.get("weight_per_unit"),
-        "num_units": data.get("num_units"),
-        "checkoutId": data.get("checkoutId"),
-        "date_sold": data.get("date_sold") or datetime.utcnow().isoformat()  
-    }
+                "user_id": user_id,
+                "product_id": data.get("product_id"),
+                "product_name": data.get("product_name"),
+                "unit_type": data.get("unit_type"),
+                "customer_name": data.get("customer_name"),
+                "price_per_unit": data.get("price_per_unit"),
+                "total_price": data.get("total_price"),
+                "mpesaNumber": data.get("mpesaNumber"),
+                "weight_per_unit": data.get("weight_per_unit"),
+                "num_units": data.get("num_units"),
+                "checkoutId": data.get("checkoutId"),
+                "date_sold": data.get("date_sold") or datetime.utcnow().isoformat()
+            }
         )
 
         print("✅ Sale added:", sale)
@@ -225,7 +227,6 @@ def get_sales():
         print("❌ Error fetching sales:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
-
 
 
 @main.route("/sales/<sale_id>", methods=["PUT"])
@@ -264,3 +265,32 @@ def delete_sale(sale_id):
         print("❌ Error deleting sale:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
+
+
+
+# ======================== RAFIKI (Gemini AI) ROUTE ========================
+
+@main.route("/rafiki", methods=["POST"])
+def chat_with_rafiki():
+    """
+    Handles AI requests from the frontend.
+    Sends user prompts to the Gemini model (via rafiki.py)
+    and returns AI-generated responses.
+    """
+    try:
+        data = request.json
+        prompt = data.get("prompt")
+
+        if not prompt:
+            return jsonify({"error": "Missing prompt"}), 400
+
+        print("🧠 Rafiki received prompt:", prompt)
+        answer = ask_gemini(prompt)
+        print("🤖 Rafiki's response:", answer)
+
+        return jsonify({"response": answer}), 200
+
+    except Exception as e:
+        print("❌ Error in Rafiki chat:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500

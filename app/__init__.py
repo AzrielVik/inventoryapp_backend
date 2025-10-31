@@ -17,6 +17,7 @@ APPWRITE_API_KEY = os.getenv("APPWRITE_API_KEY")
 APPWRITE_DATABASE_ID = os.getenv("APPWRITE_DATABASE_ID")
 PRODUCTS_COLLECTION_ID = os.getenv("PRODUCTS_COLLECTION_ID")
 SALES_COLLECTION_ID = os.getenv("SALES_COLLECTION_ID")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Sanity check
 missing_vars = [
@@ -25,7 +26,8 @@ missing_vars = [
         ("APPWRITE_API_KEY", APPWRITE_API_KEY),
         ("APPWRITE_DATABASE_ID", APPWRITE_DATABASE_ID),
         ("PRODUCTS_COLLECTION_ID", PRODUCTS_COLLECTION_ID),
-        ("SALES_COLLECTION_ID", SALES_COLLECTION_ID)
+        ("SALES_COLLECTION_ID", SALES_COLLECTION_ID),
+        ("GEMINI_API_KEY", GEMINI_API_KEY)
     ] if not value
 ]
 
@@ -40,7 +42,7 @@ client.set_key(APPWRITE_API_KEY)
 
 db = Databases(client)
 
-# ---------------------- Flask App Factory ----------------------
+# ---------------------- Initialize Flask ----------------------
 def create_app():
     app = Flask(__name__)
     CORS(app)
@@ -49,8 +51,12 @@ def create_app():
     from .routes import main
     app.register_blueprint(main)
 
-    # ---------------------- Register M-Pesa Blueprint ----------------------
+    # Register M-Pesa routes
     from .mpesa import mpesa_bp
-    app.register_blueprint(mpesa_bp, url_prefix="/api")  # /api/prompt-mpesa
+    app.register_blueprint(mpesa_bp, url_prefix="/api")
+
+    # Register Rafiki (Gemini) routes
+    from .rafiki import rafiki_bp
+    app.register_blueprint(rafiki_bp, url_prefix="/api")
 
     return app
