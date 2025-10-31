@@ -72,6 +72,7 @@ def get_app_context():
 
 
 # ==================== MAIN FUNCTION: Ask Rafiki ====================
+# In app/rafiki.py, rename:
 def ask_rafiki(prompt):
     """Send a user prompt (plus live context) to the Gemini model and return the response."""
     try:

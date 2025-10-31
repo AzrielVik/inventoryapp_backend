@@ -9,7 +9,7 @@ import traceback
 from datetime import datetime
 
 # Import Rafiki (Gemini AI helper)
-from .rafiki import ask_gemini
+from .rafiki import ask_rafiki
 
 main = Blueprint("main", __name__)
 
@@ -285,7 +285,7 @@ def chat_with_rafiki():
             return jsonify({"error": "Missing prompt"}), 400
 
         print("🧠 Rafiki received prompt:", prompt)
-        answer = ask_gemini(prompt)
+        answer = ask_rafiki(prompt)
         print("🤖 Rafiki's response:", answer)
 
         return jsonify({"response": answer}), 200
