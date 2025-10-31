@@ -32,7 +32,6 @@ client.set_project(APPWRITE_PROJECT_ID)
 client.set_key(APPWRITE_API_KEY)
 db = Databases(client)
 
-
 # ==================== HELPER: Fetch Context from DB ====================
 def get_app_context():
     """Fetch summarized product and sales info for Rafiki context."""
@@ -70,11 +69,9 @@ def get_app_context():
         traceback.print_exc()
         return "Unable to fetch live inventory context right now."
 
-
 # ==================== MAIN FUNCTION: Ask Rafiki ====================
-# In app/rafiki.py, rename:
 def ask_rafiki(prompt):
-    """Send a user prompt (plus live context) to the Gemini model and return the response."""
+    """Send a user prompt (plus live context) to the Gemini model and return the response with Rafiki personality."""
     try:
         context = get_app_context()
         full_prompt = f"{context}\n\nUser asked: {prompt}"
