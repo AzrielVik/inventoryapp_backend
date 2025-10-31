@@ -4,6 +4,7 @@ import os
 import requests
 import traceback
 from dotenv import load_dotenv
+from flask import Blueprint, request, jsonify
 from appwrite.client import Client
 from appwrite.services.databases import Databases
 
@@ -31,6 +32,9 @@ client.set_endpoint(APPWRITE_ENDPOINT)
 client.set_project(APPWRITE_PROJECT_ID)
 client.set_key(APPWRITE_API_KEY)
 db = Databases(client)
+
+# ==================== BLUEPRINT ====================
+rafiki_bp = Blueprint("rafiki", __name__)
 
 # ==================== HELPER: Fetch Context from DB ====================
 def get_app_context():
@@ -104,3 +108,28 @@ def ask_rafiki(prompt):
         print("❌ Error in ask_rafiki:", str(e))
         traceback.print_exc()
         return "I encountered an error trying to respond. Please try again later."
+
+# ==================== ROUTE ====================
+@rafiki_bp.route("/rafiki", methods=["POST"])
+def chat_with_rafiki():
+    """
+    Endpoint to chat with Rafiki (Gemini AI).
+    Expects JSON: {"prompt": "<user message>"}
+    """
+    try:
+        data = request.json
+        prompt = data.get("prompt")
+
+        if not prompt:
+            return jsonify({"error": "Missing prompt"}), 400
+
+        print("🧠 Rafiki received prompt:", prompt)
+        answer = ask_rafiki(prompt)
+        print("🤖 Rafiki's response:", answer)
+
+        return jsonify({"response": answer}), 200
+
+    except Exception as e:
+        print("❌ Error in Rafiki chat:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
