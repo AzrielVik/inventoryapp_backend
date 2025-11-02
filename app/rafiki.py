@@ -14,9 +14,10 @@ load_dotenv()
 # ---------------------- Gemini API Setup ----------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_API_URL = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/"
-    f"gemini-pro:generateContent?key={GEMINI_API_KEY}"
+    f"https://generativelanguage.googleapis.com/v1/models/"
+    f"gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 )
+
 
 # ---------------------- Appwrite Setup ----------------------
 APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT")
