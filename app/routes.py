@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+import requests
 from appwrite.client import Client
 from appwrite.services.databases import Databases
 from appwrite.services.account import Account
@@ -8,12 +9,11 @@ import os
 import traceback
 from datetime import datetime
 
-# Import Rafiki (Gemini AI helper)
-from .rafiki import ask_rafiki
+# ======================== SETUP ========================
 
 main = Blueprint("main", __name__)
 
-#  Appwrite Client Setup
+# Appwrite Client Setup
 client = Client()
 client.set_endpoint(os.getenv("APPWRITE_ENDPOINT"))
 client.set_project(os.getenv("APPWRITE_PROJECT_ID"))
@@ -25,6 +25,56 @@ account = Account(client)
 DATABASE_ID = os.getenv("APPWRITE_DATABASE_ID")
 PRODUCTS_COLLECTION_ID = os.getenv("PRODUCTS_COLLECTION_ID")
 SALES_COLLECTION_ID = os.getenv("SALES_COLLECTION_ID")
+
+# Gemini API setup
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+
+# ======================== HELPER ========================
+
+def ask_rafiki(prompt):
+    """
+    Sends a user prompt to the Gemini API and returns the AI response.
+    Includes detailed debug info for Render logs.
+    """
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+
+        print("🚀 Sending POST to Gemini API...")
+        print(f"🌐 URL: {url}")
+        print(f"📦 Payload: {payload}")
+
+        response = requests.post(url, headers=headers, json=payload)
+        print(f"📡 Status Code: {response.status_code}")
+        print("🧾 Raw API Response:", response.text)
+
+        if response.status_code == 404:
+            raise Exception("404 - Model not found. Check your model name or API version.")
+        elif response.status_code == 403:
+            raise Exception("403 - Access denied. Your API key may lack permission.")
+        elif response.status_code == 401:
+            raise Exception("401 - Unauthorized. Invalid or missing API key.")
+        elif not response.ok:
+            raise Exception(f"{response.status_code} - {response.text}")
+
+        data = response.json()
+
+        answer = (
+            data.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "No response text found.")
+        )
+
+        return answer
+
+    except Exception as e:
+        print("❌ Error in ask_rafiki:", str(e))
+        traceback.print_exc()
+        return "I encountered an error trying to respond. Please try again later."
 
 
 # ======================== AUTH ROUTES ========================
@@ -65,7 +115,6 @@ def login():
         print("❌ Error during login:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
-
 
 
 # ======================== PRODUCT ROUTES ========================
@@ -162,7 +211,6 @@ def delete_product(product_id):
         print("❌ Error deleting product:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
-
 
 
 # ======================== SALES ROUTES ========================
@@ -267,30 +315,39 @@ def delete_sale(sale_id):
         return jsonify({"error": str(e)}), 400
 
 
-
 # ======================== RAFIKI (Gemini AI) ROUTE ========================
 
 @main.route("/rafiki", methods=["POST"])
 def chat_with_rafiki():
     """
     Handles AI requests from the frontend.
-    Sends user prompts to the Gemini model (via rafiki.py)
-    and returns AI-generated responses.
+    Sends user prompts to the Gemini model and returns AI responses.
     """
     try:
         data = request.json
-        prompt = data.get("prompt")
+        if not data or "prompt" not in data:
+            print("⚠️ Missing 'prompt' in request JSON.")
+            return jsonify({"error": "Missing 'prompt' field."}), 400
 
-        if not prompt:
-            return jsonify({"error": "Missing prompt"}), 400
+        prompt = data["prompt"]
+        print(f"🧠 Rafiki received prompt: {prompt}")
 
-        print("🧠 Rafiki received prompt:", prompt)
         answer = ask_rafiki(prompt)
-        print("🤖 Rafiki's response:", answer)
+        print(f"🤖 Rafiki's final response: {answer}")
 
         return jsonify({"response": answer}), 200
 
     except Exception as e:
-        print("❌ Error in Rafiki chat:", str(e))
+        print("🔥 Unhandled error in /rafiki route:", str(e))
         traceback.print_exc()
+
+        try:
+            print("🔍 Fetching available Gemini models for debugging...")
+            list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
+            model_res = requests.get(list_url)
+            print("🧾 Model list status:", model_res.status_code)
+            print("📋 Available models:", model_res.text)
+        except Exception as inner_e:
+            print("⚠️ Couldn't fetch model list:", inner_e)
+
         return jsonify({"error": str(e)}), 500
