@@ -112,27 +112,30 @@ def ask_rafiki(prompt):
         traceback.print_exc()
         return "I encountered an error trying to respond. Please try again later."
 
-# ==================== ROUTE ====================
-@rafiki_bp.route("/rafiki", methods=["POST"])
-def chat_with_rafiki():
+# ==================== LIST MODELS (Debug Route) ====================
+@rafiki_bp.route("/list_models", methods=["GET"])
+def list_models():
     """
-    Endpoint to chat with Rafiki (Gemini AI).
-    Expects JSON: {"prompt": "<user message>"}
+    Temporary route to check available Gemini models for this API key.
+    Visit this URL in your browser to see model names.
     """
+    import os
+    import requests
+
     try:
-        data = request.json
-        prompt = data.get("prompt")
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return jsonify({"error": "Missing GEMINI_API_KEY in environment variables"}), 400
 
-        if not prompt:
-            return jsonify({"error": "Missing prompt"}), 400
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        print("📡 Fetching models from:", url)
 
-        print("🧠 Rafiki received prompt:", prompt)
-        answer = ask_rafiki(prompt)
-        print("🤖 Rafiki's response:", answer)
+        response = requests.get(url)
+        print("🧾 Raw response:", response.text)
 
-        return jsonify({"response": answer}), 200
+        return jsonify(response.json()), response.status_code
 
     except Exception as e:
-        print("❌ Error in Rafiki chat:", str(e))
-        traceback.print_exc()
+        print("❌ Error fetching model list:", str(e))
         return jsonify({"error": str(e)}), 500
+
