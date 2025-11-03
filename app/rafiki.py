@@ -13,11 +13,12 @@ load_dotenv()
 
 # ---------------------- Gemini API Setup ----------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_API_URL = (
-    f"https://generativelanguage.googleapis.com/v1/models/"
-    f"gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-)
 
+
+MODEL_NAME = "models/gemini-2.5-flash"
+
+
+GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 
 # ---------------------- Appwrite Setup ----------------------
 APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT")
@@ -87,6 +88,7 @@ def ask_rafiki(prompt):
             ]
         }
 
+        # ✅ Use the updated model endpoint
         response = requests.post(GEMINI_API_URL, json=payload)
         response.raise_for_status()
         data = response.json()
