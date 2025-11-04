@@ -6,6 +6,12 @@ from flask import Blueprint, request, jsonify
 from appwrite.client import Client
 from appwrite.services.databases import Databases
 
+# ==================== DEBUG: Print environment info ====================
+print("📦 ENVIRONMENT CHECK (Gemini + Model vars):")
+for key, val in os.environ.items():
+    if "GEMINI" in key or "MODEL" in key:
+        print(f"{key} = {val}")
+
 # ==================== LOAD ENVIRONMENT VARIABLES ====================
 load_dotenv()
 
@@ -50,13 +56,8 @@ def get_app_context():
         product_count = len(product_docs)
         sales_count = len(sales_docs)
 
-        # Create short samples for flavor
-        sample_products = ", ".join(
-            [p.get("name", "Unnamed") for p in product_docs[:3]]
-        )
-        sample_sales = ", ".join(
-            [s.get("customer_name", "Unknown") for s in sales_docs[:3]]
-        )
+        sample_products = ", ".join([p.get("name", "Unnamed") for p in product_docs[:3]])
+        sample_sales = ", ".join([s.get("customer_name", "Unknown") for s in sales_docs[:3]])
 
         context_summary = f"""
 You are Rafiki, the AI assistant for an inventory management system called 'Inventory'.
@@ -81,12 +82,7 @@ def ask_rafiki(prompt):
         context = get_app_context()
         full_prompt = f"{context}\n\nUser asked: {prompt}"
 
-        payload = {
-            "contents": [
-                {"role": "user", "parts": [{"text": full_prompt}]}
-            ]
-        }
-
+        payload = {"contents": [{"role": "user", "parts": [{"text": full_prompt}]}]}
         headers = {"Content-Type": "application/json"}
 
         print("📦 Payload:", payload)
@@ -99,7 +95,6 @@ def ask_rafiki(prompt):
         response.raise_for_status()
         data = response.json()
 
-        # Safely parse the Gemini output
         answer = (
             data.get("candidates", [{}])[0]
             .get("content", {})
@@ -108,7 +103,6 @@ def ask_rafiki(prompt):
         )
 
         final_answer = f"📊 Rafiki here! Based on your inventory data: {answer}"
-
         print("🧠 Rafiki Response:", final_answer)
         return final_answer
 
@@ -125,10 +119,7 @@ def ask_rafiki(prompt):
 # ==================== DEBUG ROUTE: List Models ====================
 @rafiki_bp.route("/list_models", methods=["GET"])
 def list_models():
-    """
-    Temporary route to check available Gemini models for this API key.
-    Visit this URL in your browser to see model names.
-    """
+    """Temporary route to check available Gemini models for this API key."""
     try:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
@@ -139,7 +130,6 @@ def list_models():
 
         response = requests.get(url)
         print("🧾 Raw response:", response.text)
-
         return jsonify(response.json()), response.status_code
 
     except Exception as e:
