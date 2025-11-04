@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from flask import Blueprint, request, jsonify
 from appwrite.client import Client
 from appwrite.services.databases import Databases
+import json
 
 # ==================== DEBUG: Print environment info ====================
 print("📦 ENVIRONMENT CHECK (Gemini + Model vars):")
@@ -17,13 +18,8 @@ load_dotenv()
 
 # ---------------------- Gemini API Setup ----------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-# ✅ Use a supported model (2.5 Flash is the newest and fast)
 MODEL_NAME = "models/gemini-2.5-pro"
-
-# ✅ Correct endpoint for Gemini v1beta
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
-
 
 # ---------------------- Appwrite Setup ----------------------
 APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT")
@@ -32,8 +28,8 @@ APPWRITE_API_KEY = os.getenv("APPWRITE_API_KEY")
 APPWRITE_DATABASE_ID = os.getenv("APPWRITE_DATABASE_ID")
 PRODUCTS_COLLECTION_ID = os.getenv("PRODUCTS_COLLECTION_ID")
 SALES_COLLECTION_ID = os.getenv("SALES_COLLECTION_ID")
+MEMORY_COLLECTION_ID = os.getenv("MEMORY_COLLECTION_ID")  # Collection for storing AI memory
 
-# Initialize Appwrite client
 client = Client()
 client.set_endpoint(APPWRITE_ENDPOINT)
 client.set_project(APPWRITE_PROJECT_ID)
@@ -43,9 +39,8 @@ db = Databases(client)
 # ==================== BLUEPRINT ====================
 rafiki_bp = Blueprint("rafiki", __name__)
 
-# ==================== HELPER: Fetch Context from DB ====================
+# ==================== HELPER: Fetch Context ====================
 def get_app_context():
-    """Fetch summarized product and sales info for Rafiki context."""
     try:
         products = db.list_documents(APPWRITE_DATABASE_ID, PRODUCTS_COLLECTION_ID)
         sales = db.list_documents(APPWRITE_DATABASE_ID, SALES_COLLECTION_ID)
@@ -53,85 +48,103 @@ def get_app_context():
         product_docs = products.get("documents", [])
         sales_docs = sales.get("documents", [])
 
-        product_count = len(product_docs)
-        sales_count = len(sales_docs)
-
         sample_products = ", ".join([p.get("name", "Unnamed") for p in product_docs[:3]])
         sample_sales = ", ".join([s.get("customer_name", "Unknown") for s in sales_docs[:3]])
 
-        context_summary = f"""
-You are Rafiki, the AI assistant for an inventory management system called 'Inventory'.
-- Products in database: {product_count}
-- Sales recorded: {sales_count}
-- Example products: {sample_products if sample_products else "N/A"}
-- Example customers: {sample_sales if sample_sales else "N/A"}
-You help users understand sales trends, manage inventory, and provide smart insights.
-"""
-
-        return context_summary.strip()
+        return f"""
+Inventory Database Snapshot:
+- Total Products: {len(product_docs)}
+- Total Sales: {len(sales_docs)}
+- Example Products: {sample_products if sample_products else "None"}
+- Example Customers: {sample_sales if sample_sales else "None"}
+        """.strip()
 
     except Exception as e:
-        print("⚠️ Error fetching Appwrite context:", str(e))
+        print("⚠️ Error fetching inventory context:", e)
         traceback.print_exc()
-        return "Unable to fetch live inventory context right now."
+        return "Live inventory context unavailable."
 
-# ==================== MAIN FUNCTION: Ask Rafiki ====================
-def ask_rafiki(prompt):
-    """Send a user prompt (plus live context) to the Gemini model and return the response."""
+# ==================== MEMORY HELPERS ====================
+def get_memory():
+    """Fetch Rafiki's memory from the database."""
     try:
-        context = get_app_context()
-        full_prompt = f"{context}\n\nUser asked: {prompt}"
+        memory_docs = db.list_documents(APPWRITE_DATABASE_ID, MEMORY_COLLECTION_ID)
+        memory_texts = [doc.get("text", "") for doc in memory_docs.get("documents", [])]
+        return "\n".join(memory_texts)
+    except Exception as e:
+        print("⚠️ Error fetching memory:", e)
+        traceback.print_exc()
+        return ""
 
-        payload = {"contents": [{"role": "user", "parts": [{"text": full_prompt}]}]}
+def save_memory(new_entry):
+    """Save a new memory entry to the database."""
+    try:
+        db.create_document(
+            APPWRITE_DATABASE_ID,
+            MEMORY_COLLECTION_ID,
+            document_id="unique_" + str(hash(new_entry)),
+            data={"text": new_entry},
+            read=["*"],
+            write=["*"]
+        )
+    except Exception as e:
+        print("⚠️ Error saving memory:", e)
+        traceback.print_exc()
+
+# ==================== MAIN FUNCTION ====================
+def ask_rafiki(prompt):
+    try:
+        inventory_context = get_app_context()
+        past_memory = get_memory()
+
+        system_prompt = """
+You are Rafiki, the intelligent AI assistant for the Inventory system.
+You always speak as Rafiki.
+You understand products, sales, stock levels, and business insights.
+You help users manage and understand their inventory and business trends.
+You do NOT say you are a Google model or language model — you are Rafiki.
+You provide helpful, confident, and clear inventory advice.
+"""
+
+        payload = {
+            "contents": [
+                {"role": "system", "parts": [{"text": system_prompt}]} ,
+                {"role": "system", "parts": [{"text": f"Live business context:\n{inventory_context}"}]},
+                {"role": "system", "parts": [{"text": f"Past memory:\n{past_memory}"}]},
+                {"role": "user", "parts": [{"text": prompt}]}
+            ]
+        }
+
         headers = {"Content-Type": "application/json"}
 
-        print("📦 Payload:", payload)
-        print("📡 Sending request to:", GEMINI_API_URL)
-
-        response = requests.post(GEMINI_API_URL, headers=headers, json=payload)
-        print("📡 Status Code:", response.status_code)
-        print("🧾 Raw API Response:", response.text)
-
+        response = requests.post(GEMINI_API_URL, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()
 
         answer = (
             data.get("candidates", [{}])[0]
-            .get("content", {})
-            .get("parts", [{}])[0]
-            .get("text", "Rafiki has no response right now.")
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
         )
 
-        final_answer = f"📊 Rafiki here! Based on your inventory data: {answer}"
-        print("🧠 Rafiki Response:", final_answer)
-        return final_answer
+        if answer:
+            # Save the user query and AI response to memory
+            save_memory(f"User: {prompt}\nRafiki: {answer}")
 
-    except requests.exceptions.RequestException as api_err:
-        print("❌ API Request Error in ask_rafiki:", str(api_err))
-        traceback.print_exc()
-        return "Rafiki ran into a connection issue while talking to Gemini."
+        return answer or "Rafiki didn't understand that."
 
     except Exception as e:
-        print("❌ General Error in ask_rafiki:", str(e))
+        print("❌ Error in ask_rafiki:", e)
         traceback.print_exc()
-        return "I encountered an error trying to respond. Please try again later."
+        return "Rafiki experienced a problem processing this request."
 
-# ==================== DEBUG ROUTE: List Models ====================
+# ==================== DEBUG ROUTE ====================
 @rafiki_bp.route("/list_models", methods=["GET"])
 def list_models():
-    """Temporary route to check available Gemini models for this API key."""
     try:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            return jsonify({"error": "Missing GEMINI_API_KEY in environment variables"}), 400
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        print("📡 Fetching models from:", url)
-
-        response = requests.get(url)
-        print("🧾 Raw response:", response.text)
-        return jsonify(response.json()), response.status_code
-
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
+        r = requests.get(url)
+        return jsonify(r.json()), r.status_code
     except Exception as e:
-        print("❌ Error fetching model list:", str(e))
         return jsonify({"error": str(e)}), 500
