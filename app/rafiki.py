@@ -14,11 +14,13 @@ load_dotenv()
 # ---------------------- Gemini API Setup ----------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-
+# ✅ Use a supported model (2.5 Flash is the newest and fast)
 MODEL_NAME = "models/gemini-2.5-flash"
 
-
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
+# ✅ Correct endpoint for Gemini v1beta
+GEMINI_API_URL = (
+    f"https://generativelanguage.googleapis.com/v1beta/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
+)
 
 # ---------------------- Appwrite Setup ----------------------
 APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT")
@@ -51,12 +53,12 @@ def get_app_context():
         product_count = len(product_docs)
         sales_count = len(sales_docs)
 
-        # Build a small summary of top few items (optional)
+        # Create short samples for flavor
         sample_products = ", ".join(
-            [p["name"] for p in product_docs[:3] if "name" in p]
+            [p.get("name", "Unnamed") for p in product_docs[:3]]
         )
         sample_sales = ", ".join(
-            [s["customer_name"] for s in sales_docs[:3] if "customer_name" in s]
+            [s.get("customer_name", "Unknown") for s in sales_docs[:3]]
         )
 
         context_summary = f"""
@@ -75,9 +77,10 @@ def get_app_context():
         traceback.print_exc()
         return "Unable to fetch live inventory context right now."
 
+
 # ==================== MAIN FUNCTION: Ask Rafiki ====================
 def ask_rafiki(prompt):
-    """Send a user prompt (plus live context) to the Gemini model and return the response with Rafiki personality."""
+    """Send a user prompt (plus live context) to the Gemini model and return the response."""
     try:
         context = get_app_context()
         full_prompt = f"{context}\n\nUser asked: {prompt}"
@@ -88,12 +91,19 @@ def ask_rafiki(prompt):
             ]
         }
 
-        # ✅ Use the updated model endpoint
-        response = requests.post(GEMINI_API_URL, json=payload)
+        headers = {"Content-Type": "application/json"}
+
+        print("📦 Payload:", payload)
+        print("📡 Sending request to:", GEMINI_API_URL)
+
+        response = requests.post(GEMINI_API_URL, headers=headers, json=payload)
+        print("📡 Status Code:", response.status_code)
+        print("🧾 Raw API Response:", response.text)
+
         response.raise_for_status()
         data = response.json()
 
-        # Parse Gemini response text safely
+        # Safely parse the Gemini output
         answer = (
             data.get("candidates", [{}])[0]
             .get("content", {})
@@ -101,27 +111,29 @@ def ask_rafiki(prompt):
             .get("text", "Rafiki has no response right now.")
         )
 
-        # Add Rafiki personality / flavor here
         final_answer = f"📊 Rafiki here! Based on your inventory data: {answer}"
 
         print("🧠 Rafiki Response:", final_answer)
         return final_answer
 
+    except requests.exceptions.RequestException as api_err:
+        print("❌ API Request Error in ask_rafiki:", str(api_err))
+        traceback.print_exc()
+        return "Rafiki ran into a connection issue while talking to Gemini."
+
     except Exception as e:
-        print("❌ Error in ask_rafiki:", str(e))
+        print("❌ General Error in ask_rafiki:", str(e))
         traceback.print_exc()
         return "I encountered an error trying to respond. Please try again later."
 
-# ==================== LIST MODELS (Debug Route) ====================
+
+# ==================== DEBUG ROUTE: List Models ====================
 @rafiki_bp.route("/list_models", methods=["GET"])
 def list_models():
     """
     Temporary route to check available Gemini models for this API key.
     Visit this URL in your browser to see model names.
     """
-    import os
-    import requests
-
     try:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
