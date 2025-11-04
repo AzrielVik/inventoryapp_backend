@@ -1,5 +1,3 @@
-# app/rafiki.py
-
 import os
 import requests
 import traceback
@@ -62,13 +60,13 @@ def get_app_context():
         )
 
         context_summary = f"""
-        You are Rafiki, the AI assistant for an inventory management system called 'Inventory'.
-        - Products in database: {product_count}
-        - Sales recorded: {sales_count}
-        - Example products: {sample_products if sample_products else "N/A"}
-        - Example customers: {sample_sales if sample_sales else "N/A"}
-        You help users understand sales trends, manage inventory, and provide smart insights.
-        """
+You are Rafiki, the AI assistant for an inventory management system called 'Inventory'.
+- Products in database: {product_count}
+- Sales recorded: {sales_count}
+- Example products: {sample_products if sample_products else "N/A"}
+- Example customers: {sample_sales if sample_sales else "N/A"}
+You help users understand sales trends, manage inventory, and provide smart insights.
+"""
 
         return context_summary.strip()
 
@@ -76,7 +74,6 @@ def get_app_context():
         print("⚠️ Error fetching Appwrite context:", str(e))
         traceback.print_exc()
         return "Unable to fetch live inventory context right now."
-
 
 # ==================== MAIN FUNCTION: Ask Rafiki ====================
 def ask_rafiki(prompt):
@@ -125,7 +122,6 @@ def ask_rafiki(prompt):
         print("❌ General Error in ask_rafiki:", str(e))
         traceback.print_exc()
         return "I encountered an error trying to respond. Please try again later."
-
 
 # ==================== DEBUG ROUTE: List Models ====================
 @rafiki_bp.route("/list_models", methods=["GET"])
