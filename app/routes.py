@@ -28,7 +28,7 @@ SALES_COLLECTION_ID = os.getenv("SALES_COLLECTION_ID")
 
 # Gemini API setup
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
 
 
 # ======================== HELPER ========================
