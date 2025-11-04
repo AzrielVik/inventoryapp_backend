@@ -138,4 +138,3 @@ def list_models():
     except Exception as e:
         print("❌ Error fetching model list:", str(e))
         return jsonify({"error": str(e)}), 500
-
