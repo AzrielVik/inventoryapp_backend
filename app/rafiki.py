@@ -13,7 +13,7 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # ✅ Use a supported model (2.5 Flash is the newest and fast)
-MODEL_NAME = "models/gemini-2.5-flash"
+MODEL_NAME = "models/gemini-2.5-pro"
 
 # ✅ Correct endpoint for Gemini v1beta
 GEMINI_API_URL = (
