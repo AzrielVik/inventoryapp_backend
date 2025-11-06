@@ -34,41 +34,27 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
 # ======================== HELPER ========================
 
 def ask_rafiki(prompt):
-    """
-    Sends a user prompt to the Gemini API and returns the AI response.
-    Includes detailed debug info for Render logs.
-    """
+    """Sends a user prompt to the Gemini API and returns the AI response."""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
         headers = {"Content-Type": "application/json"}
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
         print("🚀 Sending POST to Gemini API...")
-        print(f"🌐 URL: {url}")
-        print(f"📦 Payload: {payload}")
-
         response = requests.post(url, headers=headers, json=payload)
         print(f"📡 Status Code: {response.status_code}")
         print("🧾 Raw API Response:", response.text)
 
-        if response.status_code == 404:
-            raise Exception("404 - Model not found. Check your model name or API version.")
-        elif response.status_code == 403:
-            raise Exception("403 - Access denied. Your API key may lack permission.")
-        elif response.status_code == 401:
-            raise Exception("401 - Unauthorized. Invalid or missing API key.")
-        elif not response.ok:
+        if not response.ok:
             raise Exception(f"{response.status_code} - {response.text}")
 
         data = response.json()
-
         answer = (
             data.get("candidates", [{}])[0]
             .get("content", {})
             .get("parts", [{}])[0]
             .get("text", "No response text found.")
         )
-
         return answer
 
     except Exception as e:
@@ -224,7 +210,24 @@ def add_sale():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        print("💰 Add sale request:", data)
+        print("💰 Add sale request received:", data)
+
+        # Smart handling for quantity/weight values
+        weight_per_unit = data.get("weight_per_unit")
+        num_units = data.get("num_units")
+        unit_type = data.get("unit_type")
+
+        # Clean up values (avoid defaulting to zero)
+        if unit_type == "kg":
+            num_units = None
+            if weight_per_unit in ("", None):
+                raise ValueError("Missing weight value for kg-based sale.")
+        else:
+            weight_per_unit = None
+            if num_units in ("", None):
+                raise ValueError("Missing unit quantity for non-kg sale.")
+
+        print(f"📏 Cleaned values -> weight_per_unit: {weight_per_unit}, num_units: {num_units}")
 
         sale = db.create_document(
             database_id=DATABASE_ID,
@@ -234,19 +237,19 @@ def add_sale():
                 "user_id": user_id,
                 "product_id": data.get("product_id"),
                 "product_name": data.get("product_name"),
-                "unit_type": data.get("unit_type"),
+                "unit_type": unit_type,
                 "customer_name": data.get("customer_name"),
                 "price_per_unit": data.get("price_per_unit"),
                 "total_price": data.get("total_price"),
                 "mpesaNumber": data.get("mpesaNumber"),
-                "weight_per_unit": data.get("weight_per_unit"),
-                "num_units": data.get("num_units"),
+                "weight_per_unit": weight_per_unit,
+                "num_units": num_units,
                 "checkoutId": data.get("checkoutId"),
                 "date_sold": data.get("date_sold") or datetime.utcnow().isoformat()
             }
         )
 
-        print("✅ Sale added:", sale)
+        print("✅ Sale added successfully:", sale)
         return jsonify(sale), 201
     except Exception as e:
         print("❌ Error adding sale:", str(e))
@@ -318,10 +321,6 @@ def delete_sale(sale_id):
 # ======================== RAFIKI (Gemini AI) ROUTE ========================
 @main.route("/rafiki", methods=["POST"])
 def chat_with_rafiki():
-    """
-    Handles AI requests from the frontend.
-    Sends user prompts to the Gemini model and returns AI responses.
-    """
     try:
         data = request.json
         if not data or "prompt" not in data:
@@ -341,10 +340,8 @@ def chat_with_rafiki():
         traceback.print_exc()
 
         try:
-            print("🔍 Fetching available Gemini models for debugging...")
             list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
             model_res = requests.get(list_url)
-            print("🧾 Model list status:", model_res.status_code)
             print("📋 Available models:", model_res.text)
         except Exception as inner_e:
             print("⚠️ Couldn't fetch model list:", inner_e)
@@ -355,27 +352,17 @@ def chat_with_rafiki():
 # ==================== LIST MODELS (Debug Route) ====================
 @main.route("/list_models", methods=["GET"])
 def list_models():
-    """
-    Temporary route to check available Gemini models for this API key.
-    Visit this URL in your browser to see model names.
-    """
-    import os
-    import requests
-
     try:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
-            return jsonify({"error": "Missing GEMINI_API_KEY in environment variables"}), 400
+            return jsonify({"error": "Missing GEMINI_API_KEY"}), 400
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
         print("📡 Fetching models from:", url)
 
         response = requests.get(url)
-        print("🧾 Raw response:", response.text)
-
         return jsonify(response.json()), response.status_code
 
     except Exception as e:
         print("❌ Error fetching model list:", str(e))
         return jsonify({"error": str(e)}), 500
-
