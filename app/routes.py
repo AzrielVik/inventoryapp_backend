@@ -212,22 +212,28 @@ def add_sale():
 
         print("💰 Add sale request received:", data)
 
-        # Smart handling for quantity/weight values
         weight_per_unit = data.get("weight_per_unit")
         num_units = data.get("num_units")
         unit_type = data.get("unit_type")
+        price_per_unit = data.get("price_per_unit")
+        total_price = data.get("total_price")
 
-        # Clean up values (avoid defaulting to zero)
+        #quantity calculation
         if unit_type == "kg":
-            num_units = None
-            if weight_per_unit in ("", None):
-                raise ValueError("Missing weight value for kg-based sale.")
+            
+            if not weight_per_unit:
+                raise ValueError("Missing weight_per_unit for kg-based sale.")
+            
+            if total_price and price_per_unit:
+                num_units = round(total_price / price_per_unit / weight_per_unit)
+            else:
+                num_units = 1
         else:
-            weight_per_unit = None
-            if num_units in ("", None):
-                raise ValueError("Missing unit quantity for non-kg sale.")
+            if not num_units:
+                raise ValueError("Missing num_units for unit-based sale.")
+            weight_per_unit = 0.0
 
-        print(f"📏 Cleaned values -> weight_per_unit: {weight_per_unit}, num_units: {num_units}")
+        print(f"📏 Cleaned/calculated values -> weight_per_unit: {weight_per_unit}, num_units: {num_units}")
 
         sale = db.create_document(
             database_id=DATABASE_ID,
@@ -239,8 +245,8 @@ def add_sale():
                 "product_name": data.get("product_name"),
                 "unit_type": unit_type,
                 "customer_name": data.get("customer_name"),
-                "price_per_unit": data.get("price_per_unit"),
-                "total_price": data.get("total_price"),
+                "price_per_unit": price_per_unit,
+                "total_price": total_price,
                 "mpesaNumber": data.get("mpesaNumber"),
                 "weight_per_unit": weight_per_unit,
                 "num_units": num_units,
@@ -255,6 +261,7 @@ def add_sale():
         print("❌ Error adding sale:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
+
 
 
 @main.route("/sales", methods=["GET"])
