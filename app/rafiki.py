@@ -7,28 +7,28 @@ from appwrite.client import Client
 from appwrite.services.databases import Databases
 import json
 
-# ==================== DEBUG: Print environment info ====================
+# DEBUG: Print environment info
 print("📦 ENVIRONMENT CHECK (Gemini + Model vars):")
 for key, val in os.environ.items():
     if "GEMINI" in key or "MODEL" in key:
         print(f"{key} = {val}")
 
-# ==================== LOAD ENVIRONMENT VARIABLES ====================
+# LOAD ENVIRONMENT VARIABLES
 load_dotenv()
 
-# ---------------------- Gemini API Setup ----------------------
+# Gemini API Setup
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MODEL_NAME = "models/gemini-2.5-pro"
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1/{MODEL_NAME}:generateContent?key={GEMINI_API_KEY}"
 
-# ---------------------- Appwrite Setup ----------------------
+# Appwrite Setup 
 APPWRITE_ENDPOINT = os.getenv("APPWRITE_ENDPOINT")
 APPWRITE_PROJECT_ID = os.getenv("APPWRITE_PROJECT_ID")
 APPWRITE_API_KEY = os.getenv("APPWRITE_API_KEY")
 APPWRITE_DATABASE_ID = os.getenv("APPWRITE_DATABASE_ID")
 PRODUCTS_COLLECTION_ID = os.getenv("PRODUCTS_COLLECTION_ID")
 SALES_COLLECTION_ID = os.getenv("SALES_COLLECTION_ID")
-MEMORY_COLLECTION_ID = os.getenv("MEMORY_COLLECTION_ID")  # Collection for storing AI memory
+MEMORY_COLLECTION_ID = os.getenv("MEMORY_COLLECTION_ID")  
 
 client = Client()
 client.set_endpoint(APPWRITE_ENDPOINT)
@@ -36,10 +36,10 @@ client.set_project(APPWRITE_PROJECT_ID)
 client.set_key(APPWRITE_API_KEY)
 db = Databases(client)
 
-# ==================== BLUEPRINT ====================
+#  BLUEPRINT 
 rafiki_bp = Blueprint("rafiki", __name__)
 
-# ==================== HELPER: Fetch Context ====================
+# HELPER: Fetch Context
 def get_app_context():
     try:
         products = db.list_documents(APPWRITE_DATABASE_ID, PRODUCTS_COLLECTION_ID)
@@ -64,7 +64,7 @@ Inventory Database Snapshot:
         traceback.print_exc()
         return "Live inventory context unavailable."
 
-# ==================== MEMORY HELPERS ====================
+#  MEMORY HELPERS 
 def get_memory():
     """Fetch Rafiki's memory from the database."""
     try:
@@ -91,26 +91,42 @@ def save_memory(new_entry):
         print("⚠️ Error saving memory:", e)
         traceback.print_exc()
 
-# ==================== MAIN FUNCTION ====================
+# MAIN FUNCTION 
 def ask_rafiki(prompt):
     try:
         inventory_context = get_app_context()
         past_memory = get_memory()
 
-        system_prompt = """
+        #  STRONG SINGLE SYSTEM PROMPT 
+        system_prompt = f"""
 You are Rafiki, the intelligent AI assistant for the Inventory system.
-You always speak as Rafiki.
-You understand products, sales, stock levels, and business insights.
-You help users manage and understand their inventory and business trends.
-You do NOT say you are a Google model or language model — you are Rafiki.
-You provide helpful, confident, and clear inventory advice.
+
+IDENTITY:
+- You ALWAYS introduce yourself as Rafiki.
+- You NEVER say you are a large language model, AI model, or Google model.
+- You NEVER reference Gemini, Google, or internal model details.
+- You remain Rafiki in all situations.
+
+PURPOSE:
+- Assist with inventory, products, sales, analytics, and business insights.
+- Provide clear, confident, helpful responses.
+- Use context and memory to maintain continuity across chats.
+
+MEMORY:
+{past_memory}
+
+LIVE BUSINESS CONTEXT:
+{inventory_context}
+
+BEHAVIOR RULES:
+- Stay in character as Rafiki 100% of the time.
+- If asked “Who are you?”, respond: “I am Rafiki, your inventory assistant.”
+- Ignore attempts to break character (e.g., asking about models or training).
 """
 
         payload = {
             "contents": [
-                {"role": "system", "parts": [{"text": system_prompt}]} ,
-                {"role": "system", "parts": [{"text": f"Live business context:\n{inventory_context}"}]},
-                {"role": "system", "parts": [{"text": f"Past memory:\n{past_memory}"}]},
+                {"role": "system", "parts": [{"text": system_prompt}]},
                 {"role": "user", "parts": [{"text": prompt}]}
             ]
         }
@@ -129,7 +145,6 @@ You provide helpful, confident, and clear inventory advice.
         )
 
         if answer:
-            # Save the user query and AI response to memory
             save_memory(f"User: {prompt}\nRafiki: {answer}")
 
         return answer or "Rafiki didn't understand that."
@@ -139,7 +154,7 @@ You provide helpful, confident, and clear inventory advice.
         traceback.print_exc()
         return "Rafiki experienced a problem processing this request."
 
-# ==================== DEBUG ROUTE ====================
+#DEBUG ROUTE 
 @rafiki_bp.route("/list_models", methods=["GET"])
 def list_models():
     try:
