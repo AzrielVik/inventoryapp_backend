@@ -8,6 +8,8 @@ from appwrite.query import Query
 import os
 import traceback
 from datetime import datetime
+from app.config import PRODUCTS_COLLECTION
+
 
 # ======================== SETUP ========================
 
@@ -114,7 +116,23 @@ def add_product():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        print("📦 Add product request:", data)
+        name = data.get("name")
+        unit_type = data.get("unit_type")
+        rate = data.get("price_per_unit")
+        stock_quantity = data.get("stock_quantity")
+        low_stock_threshold = data.get("low_stock_threshold")
+
+        # Basic validation
+        if not all([name, unit_type, rate is not None,
+                    stock_quantity is not None,
+                    low_stock_threshold is not None]):
+            return jsonify({"error": "Missing required product fields"}), 400
+
+        stock_quantity = int(stock_quantity)
+        low_stock_threshold = int(low_stock_threshold)
+
+        if stock_quantity < 0 or low_stock_threshold < 0:
+            return jsonify({"error": "Stock values cannot be negative"}), 400
 
         product = db.create_document(
             database_id=DATABASE_ID,
@@ -122,16 +140,17 @@ def add_product():
             document_id=ID.unique(),
             data={
                 "user_id": user_id,
-                "name": data.get("name"),
-                "unit_type": data.get("unit_type"),
-                "rate": data.get("price_per_unit"),
+                "name": name,
+                "unit_type": unit_type,
+                "rate": float(rate),
+                "stock_quantity": stock_quantity,
+                "low_stock_threshold": low_stock_threshold,
             }
         )
 
-        print("✅ Product added:", product)
         return jsonify(product), 201
+
     except Exception as e:
-        print("❌ Error adding product:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
 
@@ -144,19 +163,15 @@ def get_products():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        print(f"📦 Fetching products for user {user_id}...")
         response = db.list_documents(
             database_id=DATABASE_ID,
             collection_id=PRODUCTS_COLLECTION_ID,
             queries=[Query.equal("user_id", user_id)]
         )
 
-        products_list = response.get("documents", [])
-        print(f"✅ {len(products_list)} products fetched for user {user_id}")
+        return jsonify(response.get("documents", [])), 200
 
-        return jsonify(products_list), 200
     except Exception as e:
-        print("❌ Error fetching products:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
 
@@ -165,19 +180,43 @@ def get_products():
 def update_product(product_id):
     try:
         data = request.json
-        print(f"📦 Update product {product_id} with:", data)
+
+        update_data = {}
+
+        # Only allow safe fields to be updated
+        allowed_fields = [
+            "name",
+            "unit_type",
+            "rate",
+            "stock_quantity",
+            "low_stock_threshold"
+        ]
+
+        for field in allowed_fields:
+            if field in data:
+                if field in ["stock_quantity", "low_stock_threshold"]:
+                    value = int(data[field])
+                    if value < 0:
+                        return jsonify({"error": f"{field} cannot be negative"}), 400
+                    update_data[field] = value
+                elif field == "rate":
+                    update_data[field] = float(data[field])
+                else:
+                    update_data[field] = data[field]
+
+        if not update_data:
+            return jsonify({"error": "No valid fields to update"}), 400
 
         updated = db.update_document(
             database_id=DATABASE_ID,
             collection_id=PRODUCTS_COLLECTION_ID,
             document_id=product_id,
-            data=data
+            data=update_data
         )
 
-        print("✅ Product updated:", updated)
         return jsonify(updated), 200
+
     except Exception as e:
-        print("❌ Error updating product:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
 
@@ -185,18 +224,18 @@ def update_product(product_id):
 @main.route("/products/<product_id>", methods=["DELETE"])
 def delete_product(product_id):
     try:
-        print(f"🗑️ Delete product {product_id}")
         db.delete_document(
             database_id=DATABASE_ID,
             collection_id=PRODUCTS_COLLECTION_ID,
             document_id=product_id
         )
-        print("✅ Product deleted:", product_id)
+
         return jsonify({"message": "Product deleted successfully"}), 200
+
     except Exception as e:
-        print("❌ Error deleting product:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
+
 
 
 # ======================== SALES ROUTES ========================
@@ -206,43 +245,75 @@ def add_sale():
     try:
         data = request.json
         user_id = data.get("user_id")
+        product_id = data.get("product_id")
 
-        if not user_id:
-            return jsonify({"error": "Missing user_id"}), 400
+        if not user_id or not product_id:
+            return jsonify({"error": "Missing user_id or product_id"}), 400
 
         print("💰 Add sale request received:", data)
 
+        # Fetch product
+        product = db.get_document(
+            database_id=DATABASE_ID,
+            collection_id=PRODUCTS_COLLECTION,
+            document_id=product_id
+        )
+
+        stock_quantity = float(product.get("stock_quantity", 0))
+        unit_type = product.get("unit_type")
+
         weight_per_unit = data.get("weight_per_unit")
         num_units = data.get("num_units")
-        unit_type = data.get("unit_type")
         price_per_unit = data.get("price_per_unit")
         total_price = data.get("total_price")
 
-        #quantity calculation
+        # ================== Quantity Calculation ==================
         if unit_type == "kg":
-            
             if not weight_per_unit:
                 raise ValueError("Missing weight_per_unit for kg-based sale.")
-            
-            if total_price and price_per_unit:
-                num_units = round(total_price / price_per_unit / weight_per_unit)
-            else:
-                num_units = 1
+
+            quantity_sold = float(weight_per_unit)
+
         else:
             if not num_units:
                 raise ValueError("Missing num_units for unit-based sale.")
+
+            quantity_sold = float(num_units)
             weight_per_unit = 0.0
 
-        print(f"📏 Cleaned/calculated values -> weight_per_unit: {weight_per_unit}, num_units: {num_units}")
+        print(f"📦 Quantity being sold: {quantity_sold}")
+        print(f"📦 Current stock: {stock_quantity}")
 
+        # ================== STOCK VALIDATION ==================
+        if stock_quantity < quantity_sold:
+            return jsonify({
+                "error": "Insufficient stock",
+                "available_stock": stock_quantity
+            }), 400
+
+        # ================== SUBTRACT STOCK ==================
+        new_stock = stock_quantity - quantity_sold
+
+        db.update_document(
+            database_id=DATABASE_ID,
+            collection_id=PRODUCTS_COLLECTION,
+            document_id=product_id,
+            data={
+                "stock_quantity": new_stock
+            }
+        )
+
+        print(f"📉 Stock updated. New stock: {new_stock}")
+
+        # ================== CREATE SALE ==================
         sale = db.create_document(
             database_id=DATABASE_ID,
             collection_id=SALES_COLLECTION_ID,
             document_id=ID.unique(),
             data={
                 "user_id": user_id,
-                "product_id": data.get("product_id"),
-                "product_name": data.get("product_name"),
+                "product_id": product_id,
+                "product_name": product.get("name"),
                 "unit_type": unit_type,
                 "customer_name": data.get("customer_name"),
                 "price_per_unit": price_per_unit,
@@ -257,11 +328,11 @@ def add_sale():
 
         print("✅ Sale added successfully:", sale)
         return jsonify(sale), 201
+
     except Exception as e:
         print("❌ Error adding sale:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
-
 
 
 @main.route("/sales", methods=["GET"])
@@ -272,38 +343,16 @@ def get_sales():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        print(f"💰 Fetching sales for user {user_id}...")
         sales = db.list_documents(
             database_id=DATABASE_ID,
             collection_id=SALES_COLLECTION_ID,
             queries=[Query.equal("user_id", user_id)]
         )
 
-        print(f"✅ {len(sales['documents'])} sales fetched for user {user_id}")
         return jsonify(sales['documents']), 200
+
     except Exception as e:
         print("❌ Error fetching sales:", str(e))
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 400
-
-
-@main.route("/sales/<sale_id>", methods=["PUT"])
-def update_sale(sale_id):
-    try:
-        data = request.json
-        print(f"💰 Update sale {sale_id} with:", data)
-
-        updated = db.update_document(
-            database_id=DATABASE_ID,
-            collection_id=SALES_COLLECTION_ID,
-            document_id=sale_id,
-            data=data
-        )
-
-        print("✅ Sale updated:", updated)
-        return jsonify(updated), 200
-    except Exception as e:
-        print("❌ Error updating sale:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 400
 
@@ -312,13 +361,54 @@ def update_sale(sale_id):
 def delete_sale(sale_id):
     try:
         print(f"🗑️ Delete sale {sale_id}")
+
+        # Fetch sale first
+        sale = db.get_document(
+            database_id=DATABASE_ID,
+            collection_id=SALES_COLLECTION_ID,
+            document_id=sale_id
+        )
+
+        product_id = sale.get("product_id")
+        unit_type = sale.get("unit_type")
+
+        # Fetch product
+        product = db.get_document(
+            database_id=DATABASE_ID,
+            collection_id=PRODUCTS_COLLECTION,
+            document_id=product_id
+        )
+
+        stock_quantity = float(product.get("stock_quantity", 0))
+
+        # Determine quantity to restore
+        if unit_type == "kg":
+            quantity_to_restore = float(sale.get("weight_per_unit", 0))
+        else:
+            quantity_to_restore = float(sale.get("num_units", 0))
+
+        new_stock = stock_quantity + quantity_to_restore
+
+        # Restore stock
+        db.update_document(
+            database_id=DATABASE_ID,
+            collection_id=PRODUCTS_COLLECTION,
+            document_id=product_id,
+            data={
+                "stock_quantity": new_stock
+            }
+        )
+
+        # Delete sale
         db.delete_document(
             database_id=DATABASE_ID,
             collection_id=SALES_COLLECTION_ID,
             document_id=sale_id
         )
-        print("✅ Sale deleted:", sale_id)
-        return jsonify({"message": "Sale deleted successfully"}), 200
+
+        print("✅ Sale deleted and stock restored.")
+        return jsonify({"message": "Sale deleted and stock restored"}), 200
+
     except Exception as e:
         print("❌ Error deleting sale:", str(e))
         traceback.print_exc()

@@ -10,10 +10,10 @@ SALES_COLLECTION = os.getenv("SALES_COLLECTION_ID")
 
 class Product:
     @staticmethod
-    def create(name, unit_type, rate):
+    def create(name, unit_type, rate, stock_quantity, low_stock_threshold=5):
         """
         Create a new product in the database.
-        Frontend sends `unit_type` and `rate`, so we align with that.
+        Now includes stock tracking.
         """
         return db.create_document(
             database_id=DATABASE_ID,
@@ -21,8 +21,10 @@ class Product:
             document_id="unique()",
             data={
                 "name": name,
-                "unit_type": unit_type,        # maps to frontend
-                "rate": float(rate),           # maps to frontend
+                "unit_type": unit_type,
+                "rate": float(rate),
+                "stock_quantity": float(stock_quantity),
+                "low_stock_threshold": float(low_stock_threshold),
                 "created_at": datetime.utcnow().isoformat()
             }
         )
@@ -31,18 +33,22 @@ class Product:
     def list():
         """
         List all products from the database.
-        Return a clean list of dicts instead of raw Appwrite response.
+        Returns clean dicts including stock info.
         """
         res = db.list_documents(
             database_id=DATABASE_ID,
             collection_id=PRODUCTS_COLLECTION
         )
+
         return [
             {
                 "id": doc["$id"],
                 "name": doc["name"],
                 "unit_type": doc["unit_type"],
                 "rate": doc["rate"],
+                "stock_quantity": doc.get("stock_quantity", 0),
+                "low_stock_threshold": doc.get("low_stock_threshold", 5),
+                "is_low_stock": doc.get("stock_quantity", 0) <= doc.get("low_stock_threshold", 5),
                 "created_at": doc.get("created_at")
             }
             for doc in res["documents"]
@@ -58,13 +64,31 @@ class Product:
             collection_id=PRODUCTS_COLLECTION,
             document_id=product_id
         )
+
         return {
             "id": doc["$id"],
             "name": doc["name"],
             "unit_type": doc["unit_type"],
             "rate": doc["rate"],
+            "stock_quantity": doc.get("stock_quantity", 0),
+            "low_stock_threshold": doc.get("low_stock_threshold", 5),
+            "is_low_stock": doc.get("stock_quantity", 0) <= doc.get("low_stock_threshold", 5),
             "created_at": doc.get("created_at")
         }
+
+    @staticmethod
+    def update_stock(product_id, new_stock_quantity):
+        """
+        Update stock manually (restocking or corrections).
+        """
+        return db.update_document(
+            database_id=DATABASE_ID,
+            collection_id=PRODUCTS_COLLECTION,
+            document_id=product_id,
+            data={
+                "stock_quantity": float(new_stock_quantity)
+            }
+        )
 
     @staticmethod
     def delete(product_id):
@@ -76,6 +100,7 @@ class Product:
             collection_id=PRODUCTS_COLLECTION,
             document_id=product_id
         )
+
 
 
 class Sale:
