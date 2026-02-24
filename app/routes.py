@@ -8,7 +8,8 @@ from appwrite.query import Query
 import os
 import traceback
 from datetime import datetime
-from app.config import PRODUCTS_COLLECTION
+# Fix: Imported PRODUCTS_COLLECTION_ID to match your config.py
+from app.config import PRODUCTS_COLLECTION_ID
 
 
 # ======================== SETUP ========================
@@ -104,19 +105,16 @@ def add_product():
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
-        # Extract fields - reverted 'price_per_unit' back to 'rate'
         name = data.get("name")
         unit_type = data.get("unit_type")
         rate = data.get("rate") 
         stock_quantity = data.get("stock_quantity")
         low_stock_threshold = data.get("low_stock_threshold")
 
-        # Explicitly check for None so that '0' remains a valid input
         required_values = [name, unit_type, rate, stock_quantity, low_stock_threshold]
         if any(v is None for v in required_values):
             return jsonify({"error": "Missing required product fields: stock_quantity and low_stock_threshold must be included"}), 400
 
-        # Type conversion & rounding
         try:
             stock_int = int(float(stock_quantity))
             low_stock_int = int(float(low_stock_threshold))
@@ -213,20 +211,19 @@ def add_sale():
         if not user_id or not product_id:
             return jsonify({"error": "Missing user_id or product_id"}), 400
 
+        # Fix: Changed collection_id to PRODUCTS_COLLECTION_ID
         product = db.get_document(DATABASE_ID, PRODUCTS_COLLECTION_ID, product_id)
         current_stock = float(product.get("stock_quantity", 0))
         
-        # Pull quantity from whichever field the frontend sends
         quantity_sold = float(data.get("num_units") or data.get("weight_per_unit") or 0)
 
         if current_stock < quantity_sold:
             return jsonify({"error": "Insufficient stock", "available": current_stock}), 400
 
-        # Update Stock in Products Collection
         new_stock = int(current_stock - quantity_sold)
+        # Fix: Changed collection_id to PRODUCTS_COLLECTION_ID
         db.update_document(DATABASE_ID, PRODUCTS_COLLECTION_ID, product_id, data={"stock_quantity": new_stock})
 
-        # Record Sale in Sales Collection
         sale = db.create_document(
             database_id=DATABASE_ID,
             collection_id=SALES_COLLECTION_ID,
