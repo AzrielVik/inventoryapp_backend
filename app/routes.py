@@ -98,11 +98,19 @@ def login():
 def add_product():
     try:
         data = request.json
+        
+        # --- DEBUG LOGGING START ---
+        print("------------------------------------------")
+        print(f"🛠️ DEBUG: Incoming Product Data: {data}")
+        print("------------------------------------------")
+        # --- DEBUG LOGGING END ---
+
         user_id = data.get("user_id")
 
         if not user_id:
             return jsonify({"error": "Missing user_id"}), 400
 
+        # Extract fields based on current expected keys
         name = data.get("name")
         unit_type = data.get("unit_type")
         rate = data.get("rate") 
@@ -111,8 +119,21 @@ def add_product():
 
         # Explicitly check for None so that '0' remains a valid input
         required_values = [name, unit_type, rate, stock_quantity, low_stock_threshold]
+        
         if any(v is None for v in required_values):
-            return jsonify({"error": "Missing required product fields"}), 400
+            # Detailed error to help pinpoint the missing field
+            missing = [k for k, v in {
+                "name": name, 
+                "unit_type": unit_type, 
+                "rate": rate, 
+                "stock_quantity": stock_quantity, 
+                "low_stock_threshold": low_stock_threshold
+            }.items() if v is None]
+            
+            return jsonify({
+                "error": "Missing required product fields",
+                "missing_fields": missing
+            }), 400
 
         # Type conversion & rounding
         try:
