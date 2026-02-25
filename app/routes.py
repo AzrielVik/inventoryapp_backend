@@ -232,36 +232,46 @@ def add_sale():
         if not user_id or not product_id:
             return jsonify({"error": "Missing user_id or product_id"}), 400
 
+        # Fetch product to verify stock
         product = db.get_document(DATABASE_ID, PRODUCTS_COLLECTION_ID, product_id)
         current_stock = float(product.get("stock_quantity", 0))
         
-        # Pull quantity from whichever field the frontend sends
+        # Pull quantity from num_units (standard) or weight_per_unit (kg)
         quantity_sold = float(data.get("num_units") or data.get("weight_per_unit") or 0)
 
         if current_stock < quantity_sold:
             return jsonify({"error": "Insufficient stock", "available": current_stock}), 400
 
-        # Update Stock in Products Collection
+        # 1. Update Stock in Products Collection
         new_stock = int(current_stock - quantity_sold)
         db.update_document(DATABASE_ID, PRODUCTS_COLLECTION_ID, product_id, data={"stock_quantity": new_stock})
 
-        # Record Sale in Sales Collection
+        # 2. Record Sale in Sales Collection
+        # SYNC: We map 'rate' from frontend to 'price_per_unit' for Appwrite
+        sale_data = {
+            "user_id": user_id,
+            "product_id": product_id,
+            "product_name": product.get("name"),
+            "unit_type": product.get("unit_type"),
+            "customer_name": data.get("customer_name"),
+            "price_per_unit": float(data.get("rate") or data.get("price_per_unit") or 0.0),
+            "total_price": float(data.get("total_price", 0)),
+            "mpesaNumber": data.get("mpesaNumber", ""),
+            "weight_per_unit": float(data.get("weight_per_unit") or 0.0),
+            "num_units": int(data.get("num_units") or 0),
+            "checkoutId": data.get("checkoutId", ""),
+            "date_sold": data.get("date_sold") or datetime.utcnow().isoformat()
+        }
+
         sale = db.create_document(
             database_id=DATABASE_ID,
             collection_id=SALES_COLLECTION_ID,
             document_id=ID.unique(),
-            data={
-                "user_id": user_id,
-                "product_id": product_id,
-                "product_name": product.get("name"),
-                "unit_type": product.get("unit_type"),
-                "customer_name": data.get("customer_name"),
-                "total_price": float(data.get("total_price", 0)),
-                "date_sold": datetime.utcnow().isoformat()
-            }
+            data=sale_data
         )
         return jsonify(sale), 201
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 400
 
 @main.route("/sales", methods=["GET"])
